@@ -70,3 +70,5 @@ journalctl -u pseudo-dwt.service -f
   指定すればよい)
 - ログインユーザー名・UIDが `user` / `1000` であること
   (異なる場合は `SWAY_UID` / `SWAY_USER` を変更する)
+- 64bit Linux (x86_64など、`long` が8byte) であること。`struct input_event` の
+  レイアウトが64bit前提のため、32bit環境やABIが異なる環境では動作しない
