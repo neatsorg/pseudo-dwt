@@ -1,0 +1,11 @@
+[Unit]
+Description=Pseudo DWT (disable-while-typing) for internal trackpad
+After=multi-user.target
+
+[Service]
+ExecStart=/usr/local/bin/pseudo-dwt.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
