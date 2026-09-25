@@ -23,6 +23,19 @@ EVENT_FMT = "qqHHi"  # timeval(long,long) type code value
 EVENT_SIZE = struct.calcsize(EVENT_FMT)
 EV_KEY = 1
 
+# これらは「入力中」とみなさない。モディファイアを押しながら
+# トラックパッドを操作する（Ctrl+クリックなど）ために必要になる。
+MODIFIER_KEY_CODES = {
+    29,   # KEY_LEFTCTRL
+    97,   # KEY_RIGHTCTRL
+    42,   # KEY_LEFTSHIFT
+    54,   # KEY_RIGHTSHIFT
+    56,   # KEY_LEFTALT
+    100,  # KEY_RIGHTALT
+    125,  # KEY_LEFTMETA (Super)
+    126,  # KEY_RIGHTMETA (Super)
+}
+
 
 def find_keyboard_device():
     for path in glob.glob("/sys/class/input/event*/device/name"):
@@ -80,7 +93,12 @@ def main():
         if dev_path is None:
             time.sleep(2)
 
-    state = {"last_press": 0.0, "disabled": False, "identifier": None}
+    state = {
+        "last_press": 0.0,
+        "disabled": False,
+        "identifier": None,
+        "modifiers": set(),
+    }
     lock = threading.Lock()
 
     def watchdog():
@@ -89,6 +107,7 @@ def main():
             time.sleep(0.05)
             with lock:
                 if not (state["disabled"] and
+                        not state["modifiers"] and
                         time.monotonic() - state["last_press"] > DEBOUNCE_SEC):
                     continue
                 now = time.monotonic()
@@ -115,11 +134,38 @@ def main():
                     data = f.read(EVENT_SIZE)
                     if len(data) < EVENT_SIZE:
                         continue
-                    _, _, ev_type, _code, value = struct.unpack(EVENT_FMT, data)
-                    if ev_type != EV_KEY or value not in (1, 2):
+                    _, _, ev_type, code, value = struct.unpack(EVENT_FMT, data)
+                    if ev_type != EV_KEY:
                         continue
                     with lock:
+                        if code in MODIFIER_KEY_CODES:
+                            if value in (1, 2):
+                                state["modifiers"].add(code)
+                                if value == 1:
+                                    # 直前のキー入力で無効化中でも、モディファイア
+                                    # を押した時点でトラックパッドを使えるようにする。
+                                    state["last_press"] = time.monotonic()
+                                    if state["disabled"]:
+                                        env = sway_env()
+                                        if env:
+                                            if state["identifier"] is None:
+                                                state["identifier"] = get_touchpad_identifier(env)
+                                            if state["identifier"] and set_touchpad(
+                                                    env, state["identifier"], True):
+                                                state["disabled"] = False
+                                            else:
+                                                state["identifier"] = None
+                            elif value == 0:
+                                state["modifiers"].discard(code)
+                            continue
+
+                        if value not in (1, 2):
+                            continue
                         state["last_press"] = time.monotonic()
+                        # モディファイア併用中のキー入力は、トラックパッドとの
+                        # 正規の組み合わせ操作なのでDWTの対象にしない。
+                        if state["modifiers"]:
+                            continue
                         if not state["disabled"]:
                             env = sway_env()
                             if env:
@@ -134,6 +180,8 @@ def main():
                                         state["identifier"] = None
         except OSError:
             # keydの再起動やデバイス消失時は再検出してリトライする
+            with lock:
+                state["modifiers"].clear()
             time.sleep(1)
             new_path = find_keyboard_device()
             if new_path:

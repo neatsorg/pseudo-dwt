@@ -31,6 +31,11 @@ COSMICからSwayに乗り換えたところ、COSMICでは効いていたDWTがS
 1. `swaymsg input <touchpad識別子> events disabled` でタッチパッドを即座に無効化
 2. 350ms (`DEBOUNCE_SEC`) 入力が途絶えたら `events enabled` で再度有効化
 
+Shift / Ctrl / Alt / Super は入力キーから除外している。これらのモディファイアを
+押している間はトラックパッドを無効化せず、既に無効化中ならモディファイアを
+押した時点で再有効化するため、Ctrl+クリックやShift+スクロールなどの操作も
+そのまま使える。
+
 タッチパッドの識別子 (`swaymsg -t get_inputs` の `identifier` フィールド) は
 起動時に動的取得しており、ハードコードしていない。
 
